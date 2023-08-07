@@ -1,0 +1,88 @@
+#!/usr/bin/python3
+
+# Print a list of movies directed by a given person
+
+import sys
+import psycopg2
+import helpers
+
+### Globals
+
+db = None
+usage = f"Usage: {sys.argv[0]} FullName"
+
+### Command-line args
+
+if len(sys.argv) < 2:
+   print(usage)
+   exit(1)
+
+# process the command-line args ...
+Director = sys.argv[1]
+
+
+### Queries
+# Return the people that exist with then given name
+query_exists = """
+select count(p.name)
+from People p
+where p.name = %s
+"""
+
+# Return the people that match the name and are directors
+query_directors= """
+select distinct p.id, p.name
+from People p, Principals pr
+where p.name = %s and p.id = pr.person and pr.job = 'director'
+"""
+
+# Return all movies directed by given person
+query_director_info= """
+select m.title, m.year
+from Movies m, Principals pr, People p
+where p.name = %s and p.id = pr.person and pr.movie = m.id and pr.job = 'director'
+and p.id in
+(
+   select min(p.id)
+   from Movies m, Principals pr, People p
+   where p.name = %s and p.id = pr.person and pr.movie = m.id and pr.job = 'director'
+   group by p.id
+   limit 1
+)
+order by m.year
+"""
+
+### Manipulating database
+try:
+   db = psycopg2.connect("dbname=ass2")
+   cur = db.cursor()
+   
+   # Check if given person exists
+   cur.execute(query_exists, [Director])
+   exists = cur.fetchall()
+   if exists[0][0] == 0:
+      print("No such person")
+   
+   # Check if given person has directed anything
+   cur.execute(query_directors, [Director])
+   director = cur.fetchall()
+   if not director:
+      if exists[0][0] == 1:
+         print(f"{Director} has not directed any movies")
+      if exists[0][0] > 1:
+         print(f"None of the people called {Director} has directed any films")
+      
+   # If all error checks pass and the person is a director
+   if director and exists[0][0] != 0:
+      cur.execute(query_director_info, [Director, Director])
+      Movies = cur.fetchall()
+      for movie in Movies:
+         print(movie[0], "(" + str(movie[1]) + ")")
+   
+
+except Exception as err:
+   print("DB error: ", err)
+finally:
+   if db:
+      db.close()
+

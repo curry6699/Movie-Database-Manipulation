@@ -1,0 +1,71 @@
+#!/usr/bin/python3
+
+# Print a list of countries where a named movie was released
+
+import sys
+import psycopg2
+import helpers
+
+from helpers import maxLength
+
+### Globals
+
+db = None
+usage = f"Usage: {sys.argv[0]} Year"
+
+### Command-line args
+
+if len(sys.argv) < 2:
+   print(usage)
+   exit(1)
+
+# process the command-line args ...
+Year = sys.argv[1]
+
+# Check if year is valid
+if len(Year) != 4 or not Year.isdigit():
+   print('Invalid Year')
+   exit(1)
+
+### Queries
+# Return the top 10 genres of the given year
+query_top_movies = """
+select mg.genre, count(*) as occurences
+from Movies m, MovieGenres mg
+where m.year = %s and m.id = mg.movie
+group by mg.genre 
+order by occurences DESC
+FETCH FIRST 10 ROWS WITH TIES
+"""
+
+### Manipulating database
+try:
+   db = psycopg2.connect("dbname=ass2")
+   cur = db.cursor()
+
+   # Get the top 10 genres of the given year and print
+   cur.execute(query_top_movies, [Year])
+   Genres = cur.fetchall()
+   
+   # Function that returns max occurences of genre
+   max_len = len(str(maxLength(Genres)))
+   if not Genres:
+      print("No movies")
+   else:
+      for genre in Genres:
+         temp_len = len(str(genre[1]))
+         if (temp_len == max_len):
+            print(genre[1], genre[0])
+         else:
+            diff = max_len - temp_len
+            for x in range (0, diff):
+               print(" ", end="")
+            print(genre[1], genre[0])
+    
+   
+except Exception as err:
+   print("DB error: ", err)
+finally:
+   if db:
+      db.close()
+

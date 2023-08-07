@@ -1,0 +1,110 @@
+#!/usr/bin/python3
+
+# Print info about one movie; may need to choose
+
+import sys
+import psycopg2
+import helpers
+
+from helpers import printPrincipals
+
+### Globals
+
+db = None
+usage = f"Usage: {sys.argv[0]} 'PartialMovieName'"
+
+### Command-line args
+
+if len(sys.argv) < 2:
+   print(usage)
+   exit(1)
+
+# process the command-line args ...
+Movie_Name = sys.argv[1]
+
+### Queries
+# Return all movies that match the user input
+query_matches="""
+select m.title, m.year, m.id
+from Movies m
+where m.title ILIKE %s
+order by m.title, m.year
+"""
+
+# Given the id, return all principals related to the movie
+query_one_id= """
+select distinct p.name, m.title, m.year, pr.ord, m.id, p.id
+from Movies m, Principals pr, People p
+where m.id = %s and m.id = pr.movie and pr.person = p.id
+order by pr.ord
+"""
+
+# Given each principal, return their role if they have one
+query_has_role= """
+select p.name, pro.role, m.title
+from People p, PlaysRole pro, Movies m, Principals pr
+where m.id = %s and p.id = %s and m.id = pr.movie and
+pr.person = p.id and pro.inmovie = pr.id
+"""
+
+# Given each principal, check if they are an actor
+query_if_actor= """
+select distinct p.name, pr.job, m.title
+from People p, PlaysRole pro, Movies m, Principals pr
+where (m.id = %s and p.id = %s and m.id = pr.movie and
+pr.person = p.id) and (pr.job LIKE 'actor' or pr.job LIKE 'actress')
+"""
+
+# Given each principal, return the ones without roles
+query_principals_no_role= """
+select distinct p.name, pr.job, m.title
+from People p, Movies m, Principals pr
+where m.id = %s and m.id = pr.movie and p.id = %s and p.id = pr.person
+and (pr.job not LIKE 'actor' and pr.job not LIKE 'actress')
+except
+select distinct p.name, pr.job, m.title
+from People p, PlaysRole pro, Movies m, Principals pr
+where (m.id = %s and p.id = %s and m.id = pr.movie and
+pr.person = p.id and pro.inmovie = pr.id) 
+"""
+
+### Manipulating database
+try:
+   db = psycopg2.connect("dbname=ass2")
+   cur = db.cursor()
+
+   # Find how many movies match the input
+   cur.execute(query_matches, ['%' + Movie_Name + '%'])
+   Movies_Matching = cur.fetchall()
+   Num_Matching = 0
+   if Movies_Matching:
+      Num_Matching = len(Movies_Matching)
+   
+   # If no movies match, let the user know
+   if Num_Matching == 0:
+      print(f'No movie matching: \'{Movie_Name}\'')
+
+   # If exactly one movie matches, print the principals related
+   elif Num_Matching == 1:
+      Movie_ID = str(Movies_Matching[0][2])
+      printPrincipals(cur, Movie_ID, query_one_id, query_has_role, 
+                      query_if_actor, query_principals_no_role)
+      
+   # If more than one movie matches, print the matching movies and
+   # await user input and then print the movie they want
+   else:
+      Count = 1
+      for movie in Movies_Matching:
+         print(str(Count) + '.', movie[0], '(' + str(movie[1]) + ')')
+         Count = Count + 1
+      Movie_Num = input('Which movie? ')
+      Movie_ID = str(Movies_Matching[int(Movie_Num) - 1][2])
+      printPrincipals(cur, Movie_ID, query_one_id, query_has_role, 
+                      query_if_actor, query_principals_no_role)
+      
+except Exception as err:
+   print("DB error: ", err)
+finally:
+   if db:
+      db.close()
+

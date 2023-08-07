@@ -1,0 +1,142 @@
+#!/usr/bin/python3
+
+# Print a list of character roles played by an actor/actress
+
+import sys
+import psycopg2
+import helpers
+
+from helpers import unique_ID
+### Globals
+
+db = None
+usage = f"Usage: {sys.argv[0]} FullName"
+
+### Command-line args
+
+if len(sys.argv) < 2:
+   print(usage)
+   exit(1)
+
+# process the command-line args ...
+Person = sys.argv[1]
+
+
+### Queries
+# Query to check if person exists
+query_person_exists= """
+select p.name
+from People p, Principals pr
+where p.name = %s and p.id = pr.person
+"""
+
+# Query to return people with the same name
+query_people_same_name= """
+select distinct p.id, p.name
+from people p, Principals pr, Movies m
+where p.name = %s and p.id = pr.person
+order by p.id
+"""
+
+# Query to check the ids of the people with the same name, returning the 
+# movie info 
+query_specific_ids= """
+select p.id, p.name, m.title, m.year, pro.role, pr.job
+from People p, Principals pr, Movies m, PlaysRole pro
+where (p.name = %s and p.id = %s and p.id = pr.person and pr.movie = m.id)
+and (pr.job = 'actor' or pr.job = 'actress' or pr.job = 'self') 
+and pro.inmovie = pr.id
+order by m.year, m.title, pro.role
+"""
+
+# Query to return the movie info of the given names
+query_movies_acted_in= """
+select p.id, p.name, m.title, m.year, pro.role, pr.job
+from People p, Principals pr, Movies m, PlaysRole pro
+where (p.name = %s and p.id = pr.person and pr.movie = m.id)
+and (pr.job = 'actor' or pr.job = 'actress' or pr.job = 'self') 
+and pro.inmovie = pr.id
+order by m.year, m.title, pro.role
+"""
+
+### Manipulating database
+try:
+   db = psycopg2.connect("dbname=ass2")
+   cur = db.cursor()
+   
+   # Check if person exists
+   cur.execute(query_person_exists, [Person])
+   Exists = cur.fetchall()
+   if not Exists:
+      print("No such person")
+   
+   # Get a list of all the people with the same name
+   cur.execute(query_people_same_name, [Person])
+   Same_Name = cur.fetchall()
+   
+   count = 1
+   
+   # Check if we are dealing with the case with multiple people with the same 
+   # name
+   if len(Same_Name) > 1 and Exists:
+      for name in Same_Name:
+         # Loop through and print movie info according to each ID
+         cur.execute(query_specific_ids, [Person, name[0]])
+         Movies_Specific_ID = cur.fetchall()
+         print(f"{name[1]} #{count}")
+         if (len(Movies_Specific_ID) == 0):
+            print("No acting roles")
+         else:
+            for movie in Movies_Specific_ID:
+               print(movie[4], "in", movie[2], "(" + str(movie[3]) + ")")
+         count = count + 1
+   # The case when only dealing with one person with a unique name
+   if len(Same_Name) == 1 and Exists:
+      # Return a list of the given person and acting roles and movies
+      cur.execute(query_movies_acted_in, [Person])
+      Movies_Acted = cur.fetchall()
+      
+      # Check if the person has any acting roles
+      if not Movies_Acted and Exists:
+         print("No acting roles")
+      else:
+         # Print movie info of given name
+         # Return the unique IDs 
+         unique_ids = unique_ID(Movies_Acted)
+         for movie in Movies_Acted:
+            print(movie[4], "in", movie[2], "(" + str(movie[3]) + ")")
+   
+except Exception as err:
+   print("DB error: ", err)
+finally:
+   if db:
+      db.close()
+
+
+-- Q9: most commonly used grain in Hazy IPAs
+
+create or replace view Q9(grain)
+as
+
+
+
+
+
+select count(Ing.name) as highest_grain, Ing.name 
+from Ingredients Ing, Beers Be, Contains Co, Styles St
+where Ing.itype = 'grain' and St.name LIKE 'Hazy IPA' and St.id = Be.style
+and Co.beer = Be.id and co.ingredient = Ing.id and highest_grain = ALL (
+(select * from(
+select count(Ing.name) as max_grain
+from Ingredients Ing, Beers Be, Contains Co, Styles St
+where Ing.itype = 'grain' and St.name LIKE 'Hazy IPA' and St.id = Be.style
+and Co.beer = Be.id and co.ingredient = Ing.id
+Group by Ing.name
+Order by count(Ing.name) DESC
+LIMIT 1) g))
+
+Group by Ing.name
+;
+
+
+

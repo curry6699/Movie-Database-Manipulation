@@ -1,0 +1,69 @@
+#!/usr/bin/python3
+
+# Print a list of countries where a named movie was released
+
+import sys
+import psycopg2
+import helpers
+
+### Globals
+
+db = None
+usage = f"Usage: {sys.argv[0]} 'MovieName' Year"
+
+### Command-line args
+
+if len(sys.argv) < 3:
+   print(usage)
+   exit(1)
+
+# process the command-line args ...
+Title = sys.argv[1]
+Year = sys.argv[2]
+
+# Check if year is valid
+if len(Year) != 4 or not Year.isdigit():
+   print('Invalid Year')
+   exit(1)
+
+### Queries
+# Return the list of movies that match the given name
+query_movie_exists = """
+select c.name
+from Countries c, Movies m, ReleasedIn r
+where m.id = r.movie and m.title = %s and m.year = %s
+"""
+
+# Return the list of movies that match the name and year
+query_matching_movies = """
+select c.name
+from Countries c, Movies m, ReleasedIn r
+where c.code = r.country and m.id = r.movie and m.title = %s and m.year = %s
+order by c.name
+"""
+
+
+### Manipulating database
+try:
+   db = psycopg2.connect("dbname=ass2")
+   cur = db.cursor()
+
+   # Check if the movie does not exist 
+   cur.execute(query_movie_exists, [Title, Year])
+   Movie = cur.fetchall()
+   if not Movie:
+      print("No such movie")
+      exit(1)
+
+   # Get all the countries that match the title and year and print
+   cur.execute(query_matching_movies, [Title, Year])
+   Info = cur.fetchall()
+   for movie in Info:
+      print(movie[0])
+
+except Exception as err:
+   print("DB error: ", err)
+finally:
+   if db:
+      db.close()
+
